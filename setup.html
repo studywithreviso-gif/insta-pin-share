@@ -36,7 +36,7 @@
         autocomplete="new-password"
         autocapitalize="none"
         spellcheck="false"
-        placeholder="At least 10 characters"
+        placeholder="Enter PIN/password"
       >
 
       <label for="confirmPassword">Confirm password</label>
@@ -136,7 +136,7 @@
       }
 
       if (!validSharedPassword(password)) {
-        setStatus(statusEl, "Use a shared password with at least 10 characters.", "bad");
+        setStatus(statusEl, "Enter a shared PIN/password.", "bad");
         return;
       }
 

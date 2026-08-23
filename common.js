@@ -147,5 +147,5 @@ function validVerificationCode(value) {
 }
 
 function validSharedPassword(value) {
-  return typeof value === "string" && value.length >= 10;
+  return typeof value === "string" && value.length > 0;
 }

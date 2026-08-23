@@ -81,7 +81,7 @@ Your existing room ID was:
 
 Paste only that room ID into **Existing room ID**.
 
-Choose a permanent shared password (minimum 10 characters), confirm it, then click:
+Choose a permanent shared PIN/password, confirm it, then click:
 
 `Create / initialize room`
 
@@ -140,11 +140,9 @@ rooms/
 
 # Password security
 
-Use a password with at least 10 characters.
+There is no minimum length enforced by the website.
 
-Better:
-
-`mango-river-lamp-47`
+For security, a longer PIN/password is still stronger than a short numeric PIN.
 
 Avoid using:
 
@@ -154,7 +152,7 @@ Avoid using:
 - birthday
 - simple numeric PIN like 1234
 
-This is a fully static Option A design, so the encrypted verifier can be obtained by anyone who somehow learns the secret room ID. A weak password could then be guessed offline.
+This is a fully static Option A design, so the encrypted verifier can be obtained by anyone who somehow learns the secret room ID. A short PIN/password can be guessed offline more easily, but the website no longer enforces a minimum length.
 
 ---
 
