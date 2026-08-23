@@ -1,6 +1,8 @@
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 
+const ROOM_VERIFIER_TEXT = "PIN_SHARE_ROOM_VALID_V2";
+
 function bytesToBase64(bytes) {
   let binary = "";
   for (const b of bytes) binary += String.fromCharCode(b);
@@ -71,4 +73,24 @@ async function decryptText(payload, password) {
   );
 
   return decoder.decode(plainBuffer);
+}
+
+async function createRoomVerifier(password) {
+  return encryptText(ROOM_VERIFIER_TEXT, password);
+}
+
+async function verifyRoomPassword(config, password) {
+  try {
+    const value = await decryptText(
+      {
+        ciphertext: config.verifierCiphertext,
+        iv: config.verifierIv,
+        salt: config.verifierSalt
+      },
+      password
+    );
+    return value === ROOM_VERIFIER_TEXT;
+  } catch {
+    return false;
+  }
 }

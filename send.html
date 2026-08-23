@@ -11,11 +11,11 @@
   <main>
     <section class="card">
       <h1>Send verification code</h1>
-      <p>Enter the code and the same shared password used by the viewer.</p>
+      <p>Every send checks the permanent shared password before uploading the encrypted code.</p>
 
       <div id="missingRoom" class="hidden">
-        <p>No room was found in this link.</p>
-        <a href="setup.html">Create a room</a>
+        <p>This link does not contain a valid room.</p>
+        <a href="setup.html">Set up a room</a>
       </div>
 
       <div id="sender">
@@ -39,14 +39,30 @@
           placeholder="Shared password"
         >
 
-        <button id="send">Encrypt & send</button>
-        <button id="clear" class="danger">Delete current code</button>
+        <button id="send">Check password & send code</button>
 
         <div id="status" class="status"></div>
-        <div class="small">
-          The browser encrypts the code before sending it to Firebase.
-          The shared password is not uploaded.
+
+        <hr class="separator">
+
+        <h2>Current live code</h2>
+
+        <div id="liveBox" class="live-box">
+          <div id="liveState">Enter the shared password above and press “Check live code”.</div>
+          <div id="liveCode" class="live-code hidden"></div>
+          <div id="liveExpires" class="small"></div>
         </div>
+
+        <div class="row">
+          <button id="checkLive" class="secondary">Check live code</button>
+          <button id="deleteLive" class="danger">Delete live code</button>
+        </div>
+
+        <p class="small">
+          Sending requires the verification code + shared password.
+          The password is checked by decrypting the room's permanent verifier.
+          It is never uploaded.
+        </p>
       </div>
     </section>
   </main>
@@ -56,15 +72,24 @@
   <script src="common.js"></script>
   <script>
     const roomId = getRoomId();
+
     const sender = document.getElementById("sender");
     const missingRoom = document.getElementById("missingRoom");
     const codeInput = document.getElementById("code");
     const passwordInput = document.getElementById("password");
     const sendButton = document.getElementById("send");
-    const clearButton = document.getElementById("clear");
+    const checkLiveButton = document.getElementById("checkLive");
+    const deleteLiveButton = document.getElementById("deleteLive");
     const statusEl = document.getElementById("status");
+    const liveStateEl = document.getElementById("liveState");
+    const liveCodeEl = document.getElementById("liveCode");
+    const liveExpiresEl = document.getElementById("liveExpires");
 
-    let cfg;
+    let cfg = null;
+    let liveViewPassword = "";
+    let livePollTimer = null;
+    let liveExpiry = 0;
+    let lastLiveCiphertext = null;
 
     if (!roomId) {
       sender.classList.add("hidden");
@@ -74,40 +99,116 @@
     try {
       cfg = getConfig();
     } catch (err) {
-      setStatus(statusEl, err.message);
+      setStatus(statusEl, err.message, "bad");
       sendButton.disabled = true;
-      clearButton.disabled = true;
+      checkLiveButton.disabled = true;
+      deleteLiveButton.disabled = true;
     }
 
     codeInput.addEventListener("input", () => {
       codeInput.value = codeInput.value.replace(/\D/g, "").slice(0, 8);
     });
 
-    sendButton.addEventListener("click", async () => {
+    async function checkPassword(password) {
+      const roomConfig = await getRoomConfig(cfg.databaseURL, roomId);
+
+      if (!roomConfig) {
+        throw new Error(
+          "This room has not been initialized with a permanent password yet."
+        );
+      }
+
+      return verifyRoomPassword(roomConfig, password);
+    }
+
+    function hideLiveCode(message) {
+      liveCodeEl.textContent = "";
+      liveCodeEl.classList.add("hidden");
+      liveExpiry = 0;
+      lastLiveCiphertext = null;
+      liveExpiresEl.textContent = "";
+      liveStateEl.textContent = message;
+    }
+
+    async function refreshLiveCode() {
+      if (!cfg || !roomId || !liveViewPassword) return;
+
+      try {
+        const payload = await getLiveMessage(cfg.databaseURL, roomId);
+
+        if (!payload || !Number.isFinite(payload.expiresAt) || payload.expiresAt <= Date.now()) {
+          hideLiveCode("No verification code is live right now.");
+          return;
+        }
+
+        if (
+          payload.ciphertext === lastLiveCiphertext &&
+          !liveCodeEl.classList.contains("hidden")
+        ) {
+          liveExpiry = payload.expiresAt;
+          return;
+        }
+
+        const value = await decryptText(payload, liveViewPassword);
+
+        if (!validVerificationCode(value)) {
+          throw new Error("Live data is invalid.");
+        }
+
+        lastLiveCiphertext = payload.ciphertext;
+        liveExpiry = payload.expiresAt;
+        liveStateEl.textContent = "Live verification code:";
+        liveCodeEl.textContent = value;
+        liveCodeEl.classList.remove("hidden");
+      } catch (err) {
+        hideLiveCode("Could not read the live code.");
+        setStatus(statusEl, err.message || "Could not read the live code.", "bad");
+      }
+    }
+
+    function startLivePolling(password) {
+      liveViewPassword = password;
+
+      if (livePollTimer) clearInterval(livePollTimer);
+
+      refreshLiveCode();
+      livePollTimer = setInterval(refreshLiveCode, cfg.pollMs);
+    }
+
+    async function sendCode() {
       if (!cfg || !roomId) return;
 
       const code = codeInput.value.trim();
       const password = passwordInput.value;
 
-      if (!/^\d{4,8}$/.test(code)) {
-        setStatus(statusEl, "Enter a valid 4-8 digit verification code.");
+      if (!validVerificationCode(code)) {
+        setStatus(statusEl, "Enter a valid 4-8 digit verification code.", "bad");
         return;
       }
 
-      if (password.length < 8) {
-        setStatus(statusEl, "Use a shared password with at least 8 characters.");
+      if (!validSharedPassword(password)) {
+        setStatus(statusEl, "Shared password must be at least 10 characters.", "bad");
         return;
       }
 
       sendButton.disabled = true;
-      setStatus(statusEl, "Encrypting...");
+      setStatus(statusEl, "Checking password...");
 
       try {
+        const correct = await checkPassword(password);
+
+        if (!correct) {
+          setStatus(statusEl, "Incorrect shared password. Code was NOT sent.", "bad");
+          return;
+        }
+
+        setStatus(statusEl, "Encrypting and sending...");
+
         const encrypted = await encryptText(code, password);
         const now = Date.now();
 
         const payload = {
-          version: 1,
+          version: 2,
           ciphertext: encrypted.ciphertext,
           iv: encrypted.iv,
           salt: encrypted.salt,
@@ -115,45 +216,119 @@
           expiresAt: now + cfg.ttlMinutes * 60 * 1000
         };
 
-        await firebasePut(cfg.databaseURL, roomId, payload);
+        await putLiveMessage(cfg.databaseURL, roomId, payload);
 
         codeInput.value = "";
-        // Password is intentionally cleared so it is not kept in the DOM.
         passwordInput.value = "";
 
+        startLivePolling(password);
         setStatus(
           statusEl,
-          `Code sent. It expires in about ${cfg.ttlMinutes} minute${cfg.ttlMinutes === 1 ? "" : "s"}.`
+          `Code sent successfully. It is live for about ${cfg.ttlMinutes} minutes.`,
+          "good"
         );
       } catch (err) {
-        setStatus(statusEl, err.message || "Could not send the code.");
+        setStatus(statusEl, err.message || "Could not send the code.", "bad");
       } finally {
         sendButton.disabled = false;
       }
-    });
+    }
 
-    clearButton.addEventListener("click", async () => {
+    async function checkLiveCode() {
       if (!cfg || !roomId) return;
 
-      clearButton.disabled = true;
-      setStatus(statusEl, "Deleting...");
+      const password = passwordInput.value;
+
+      if (!validSharedPassword(password)) {
+        setStatus(statusEl, "Enter the shared password first.", "bad");
+        return;
+      }
+
+      checkLiveButton.disabled = true;
+      setStatus(statusEl, "Checking password...");
 
       try {
-        await firebaseDelete(cfg.databaseURL, roomId);
-        setStatus(statusEl, "Current code deleted.");
+        const correct = await checkPassword(password);
+
+        if (!correct) {
+          setStatus(statusEl, "Incorrect shared password.", "bad");
+          return;
+        }
+
+        startLivePolling(password);
+        passwordInput.value = "";
+        setStatus(statusEl, "Live-code view unlocked for this tab.", "good");
       } catch (err) {
-        setStatus(statusEl, err.message || "Could not delete the code.");
+        setStatus(statusEl, err.message || "Could not check the live code.", "bad");
       } finally {
-        clearButton.disabled = false;
+        checkLiveButton.disabled = false;
       }
-    });
+    }
+
+    async function deleteCurrentCode() {
+      if (!cfg || !roomId) return;
+
+      // If this tab already authenticated for live viewing, use that in-memory
+      // password. Otherwise require the password field.
+      let password = liveViewPassword || passwordInput.value;
+
+      if (!validSharedPassword(password)) {
+        setStatus(
+          statusEl,
+          "Enter the shared password first, then press Delete live code.",
+          "bad"
+        );
+        return;
+      }
+
+      deleteLiveButton.disabled = true;
+      setStatus(statusEl, "Checking password...");
+
+      try {
+        const correct = await checkPassword(password);
+
+        if (!correct) {
+          setStatus(statusEl, "Incorrect shared password. Nothing was deleted.", "bad");
+          return;
+        }
+
+        await deleteLiveMessage(cfg.databaseURL, roomId);
+        hideLiveCode("No verification code is live right now.");
+        passwordInput.value = "";
+        setStatus(statusEl, "Live verification code deleted.", "good");
+      } catch (err) {
+        setStatus(statusEl, err.message || "Could not delete the live code.", "bad");
+      } finally {
+        deleteLiveButton.disabled = false;
+      }
+    }
+
+    sendButton.addEventListener("click", sendCode);
+    checkLiveButton.addEventListener("click", checkLiveCode);
+    deleteLiveButton.addEventListener("click", deleteCurrentCode);
 
     codeInput.addEventListener("keydown", (event) => {
       if (event.key === "Enter") passwordInput.focus();
     });
 
     passwordInput.addEventListener("keydown", (event) => {
-      if (event.key === "Enter") sendButton.click();
+      if (event.key === "Enter" && codeInput.value.trim()) sendCode();
+    });
+
+    setInterval(() => {
+      if (liveCodeEl.classList.contains("hidden") || !liveExpiry) return;
+
+      const remaining = liveExpiry - Date.now();
+      liveExpiresEl.textContent = `Expires in ${formatRemaining(remaining)}`;
+
+      if (remaining <= 0) {
+        hideLiveCode("No verification code is live right now.");
+      }
+    }, 1000);
+
+    window.addEventListener("beforeunload", () => {
+      if (livePollTimer) clearInterval(livePollTimer);
+      liveViewPassword = "";
     });
   </script>
 </body>

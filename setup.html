@@ -4,25 +4,60 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <meta name="referrer" content="no-referrer">
-  <title>Create Private Room</title>
+  <title>Set Up Private Room</title>
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
   <main>
     <section class="card">
-      <h1>Create a room</h1>
+      <h1>Set up a permanent room</h1>
       <p>
-        Generate a long random room ID. Share only the viewer link with the other person.
-        Keep the sender link for yourself.
+        Choose one permanent shared password. The room stores only an encrypted
+        verifier, never the password itself.
       </p>
 
-      <button id="generate">Generate new room</button>
+      <label for="roomId">Existing room ID (optional)</label>
+      <input
+        id="roomId"
+        type="text"
+        autocomplete="off"
+        autocapitalize="none"
+        spellcheck="false"
+        placeholder="Leave empty to generate a new room"
+      >
+      <div class="small">
+        To keep your existing sender/receiver links, paste their room value here.
+      </div>
+
+      <label for="password">Permanent shared password</label>
+      <input
+        id="password"
+        type="password"
+        autocomplete="new-password"
+        autocapitalize="none"
+        spellcheck="false"
+        placeholder="At least 10 characters"
+      >
+
+      <label for="confirmPassword">Confirm password</label>
+      <input
+        id="confirmPassword"
+        type="password"
+        autocomplete="new-password"
+        autocapitalize="none"
+        spellcheck="false"
+        placeholder="Enter it again"
+      >
+
+      <button id="createRoom">Create / initialize room</button>
+
+      <div id="status" class="status"></div>
 
       <div id="links" class="links hidden">
         <div class="link-row">
-          <strong>Viewer link</strong>
+          <strong>Receiver link</strong>
           <div id="viewerLink" class="link-value"></div>
-          <button id="copyViewer" class="inline-button secondary">Copy viewer link</button>
+          <button id="copyViewer" class="inline-button secondary">Copy receiver link</button>
         </div>
 
         <div class="link-row">
@@ -32,26 +67,38 @@
         </div>
 
         <p class="small">
-          Choose a separate strong shared password and tell it to the viewer through a trusted channel.
-          Do not put that password in the URL.
+          The room/password verifier stays permanently. Each verification code is temporary.
+          If you forget the shared password, create a new room.
         </p>
       </div>
-
-      <div id="status" class="status"></div>
     </section>
   </main>
 
+  <script src="firebase-config.js"></script>
+  <script src="crypto.js"></script>
+  <script src="common.js"></script>
   <script>
-    const generateButton = document.getElementById("generate");
+    const roomInput = document.getElementById("roomId");
+    const passwordInput = document.getElementById("password");
+    const confirmPasswordInput = document.getElementById("confirmPassword");
+    const createButton = document.getElementById("createRoom");
+    const statusEl = document.getElementById("status");
     const links = document.getElementById("links");
     const viewerLinkEl = document.getElementById("viewerLink");
     const senderLinkEl = document.getElementById("senderLink");
     const copyViewerButton = document.getElementById("copyViewer");
     const copySenderButton = document.getElementById("copySender");
-    const statusEl = document.getElementById("status");
 
+    let cfg = null;
     let viewerUrl = "";
     let senderUrl = "";
+
+    try {
+      cfg = getConfig();
+    } catch (err) {
+      setStatus(statusEl, err.message, "bad");
+      createButton.disabled = true;
+    }
 
     function base64Url(bytes) {
       let binary = "";
@@ -72,31 +119,103 @@
       return `${url.origin}${directory}`;
     }
 
-    function generate() {
-      const room = makeRoomId();
-      const base = projectBaseUrl();
+    async function initializeRoom() {
+      if (!cfg) return;
 
-      viewerUrl = `${base}index.html#room=${room}`;
-      senderUrl = `${base}send.html#room=${room}`;
+      const requestedRoom = roomInput.value.trim();
+      const password = passwordInput.value;
+      const confirmPassword = confirmPasswordInput.value;
 
-      viewerLinkEl.textContent = viewerUrl;
-      senderLinkEl.textContent = senderUrl;
-      links.classList.remove("hidden");
-      statusEl.textContent = "Room generated.";
+      if (requestedRoom && !validateRoomId(requestedRoom)) {
+        setStatus(
+          statusEl,
+          "Existing room ID must be 20-80 characters using letters, numbers, _ or -.",
+          "bad"
+        );
+        return;
+      }
+
+      if (!validSharedPassword(password)) {
+        setStatus(statusEl, "Use a shared password with at least 10 characters.", "bad");
+        return;
+      }
+
+      if (password !== confirmPassword) {
+        setStatus(statusEl, "The two passwords do not match.", "bad");
+        return;
+      }
+
+      const room = requestedRoom || makeRoomId();
+
+      createButton.disabled = true;
+      setStatus(statusEl, "Creating permanent encrypted verifier...");
+
+      try {
+        const existing = await getRoomConfig(cfg.databaseURL, room);
+
+        if (existing) {
+          const correct = await verifyRoomPassword(existing, password);
+
+          if (!correct) {
+            throw new Error(
+              "This room already has a different permanent password. Use the existing password or create a new room."
+            );
+          }
+
+          setStatus(
+            statusEl,
+            "This room was already initialized with this password. Links are ready.",
+            "good"
+          );
+        } else {
+          const verifier = await createRoomVerifier(password);
+          const now = Date.now();
+
+          await createRoomConfig(cfg.databaseURL, room, {
+            version: 2,
+            verifierCiphertext: verifier.ciphertext,
+            verifierIv: verifier.iv,
+            verifierSalt: verifier.salt,
+            createdAt: now
+          });
+
+          setStatus(statusEl, "Room initialized successfully.", "good");
+        }
+
+        const base = projectBaseUrl();
+        viewerUrl = `${base}index.html#room=${room}`;
+        senderUrl = `${base}send.html#room=${room}`;
+
+        viewerLinkEl.textContent = viewerUrl;
+        senderLinkEl.textContent = senderUrl;
+        links.classList.remove("hidden");
+
+        roomInput.value = room;
+        passwordInput.value = "";
+        confirmPasswordInput.value = "";
+      } catch (err) {
+        setStatus(statusEl, err.message || "Could not initialize the room.", "bad");
+      } finally {
+        createButton.disabled = false;
+      }
     }
 
     async function copy(value, label) {
       try {
         await navigator.clipboard.writeText(value);
-        statusEl.textContent = `${label} copied.`;
+        setStatus(statusEl, `${label} copied.`, "good");
       } catch {
-        statusEl.textContent = "Copy failed. Select and copy the link manually.";
+        setStatus(statusEl, "Copy failed. Copy the link manually.", "bad");
       }
     }
 
-    generateButton.addEventListener("click", generate);
-    copyViewerButton.addEventListener("click", () => copy(viewerUrl, "Viewer link"));
+    createButton.addEventListener("click", initializeRoom);
+    copyViewerButton.addEventListener("click", () => copy(viewerUrl, "Receiver link"));
     copySenderButton.addEventListener("click", () => copy(senderUrl, "Sender link"));
+
+    confirmPasswordInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") initializeRoom();
+    });
   </script>
 </body>
 </html>

@@ -4,7 +4,7 @@ function getConfig() {
 
   if (!url || url.includes("PASTE_YOUR_FIREBASE")) {
     throw new Error(
-      "Firebase is not configured. Open firebase-config.js and paste your Realtime Database URL."
+      "Firebase is not configured. Open firebase-config.js and set your Realtime Database URL."
     );
   }
 
@@ -23,64 +23,115 @@ function getRoomId() {
   if (!/^[A-Za-z0-9_-]{20,80}$/.test(room)) {
     return null;
   }
+
   return room;
 }
 
-function roomEndpoint(databaseURL, roomId) {
-  return `${databaseURL}/rooms/${encodeURIComponent(roomId)}.json`;
+function validateRoomId(roomId) {
+  return /^[A-Za-z0-9_-]{20,80}$/.test(roomId);
 }
 
-async function firebaseGet(databaseURL, roomId) {
-  const response = await fetch(roomEndpoint(databaseURL, roomId), {
-    method: "GET",
+function firebasePath(databaseURL, path) {
+  const safePath = String(path)
+    .split("/")
+    .filter(Boolean)
+    .map(encodeURIComponent)
+    .join("/");
+  return `${databaseURL}/${safePath}.json`;
+}
+
+async function firebaseRequest(url, options = {}) {
+  const response = await fetch(url, {
+    cache: "no-store",
+    ...options
+  });
+
+  if (response.status === 401 || response.status === 403 || response.status === 404) {
+    return { ok: false, missingOrDenied: true, status: response.status, value: null };
+  }
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`Firebase request failed (${response.status}). ${text}`.trim());
+  }
+
+  const value = await response.json();
+  return { ok: true, missingOrDenied: false, status: response.status, value };
+}
+
+async function getRoomConfig(databaseURL, roomId) {
+  const result = await firebaseRequest(
+    firebasePath(databaseURL, `rooms/${roomId}/config`)
+  );
+
+  if (!result.ok) return null;
+  return result.value;
+}
+
+async function createRoomConfig(databaseURL, roomId, configPayload) {
+  const result = await firebaseRequest(
+    firebasePath(databaseURL, `rooms/${roomId}/config`),
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(configPayload)
+    }
+  );
+
+  if (!result.ok) {
+    throw new Error(
+      "Could not initialize this room. It may already have a permanent password, or Firebase rules may not be updated."
+    );
+  }
+
+  return result.value;
+}
+
+async function getLiveMessage(databaseURL, roomId) {
+  const result = await firebaseRequest(
+    firebasePath(databaseURL, `rooms/${roomId}/message`)
+  );
+
+  if (!result.ok) return null;
+  return result.value;
+}
+
+async function putLiveMessage(databaseURL, roomId, payload) {
+  const result = await firebaseRequest(
+    firebasePath(databaseURL, `rooms/${roomId}/message`),
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    }
+  );
+
+  if (!result.ok) {
+    throw new Error(
+      "Could not send the code. Check the Firebase rules and database URL."
+    );
+  }
+
+  return result.value;
+}
+
+async function deleteLiveMessage(databaseURL, roomId) {
+  const url = firebasePath(databaseURL, `rooms/${roomId}/message`);
+  const response = await fetch(url, {
+    method: "DELETE",
     cache: "no-store"
   });
 
-  // With the included rules, a missing/expired room may return 401/403
-  // because reads are only allowed while a valid unexpired item exists.
-  if (response.status === 401 || response.status === 403 || response.status === 404) {
-    return null;
-  }
-
-  if (!response.ok) {
-    throw new Error(`Firebase read failed (${response.status}).`);
-  }
-
-  return response.json();
-}
-
-async function firebasePut(databaseURL, roomId, payload) {
-  const response = await fetch(roomEndpoint(databaseURL, roomId), {
-    method: "PUT",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload)
-  });
-
-  if (!response.ok) {
-    const details = await response.text().catch(() => "");
-    throw new Error(
-      `Firebase write failed (${response.status}). Check database URL and security rules. ${details}`.trim()
-    );
-  }
-
-  return response.json();
-}
-
-async function firebaseDelete(databaseURL, roomId) {
-  const response = await fetch(roomEndpoint(databaseURL, roomId), {
-    method: "DELETE"
-  });
-
   if (!response.ok && response.status !== 404) {
-    const details = await response.text().catch(() => "");
-    throw new Error(
-      `Firebase delete failed (${response.status}). ${details}`.trim()
-    );
+    const text = await response.text().catch(() => "");
+    throw new Error(`Could not delete the live code (${response.status}). ${text}`.trim());
   }
 }
 
-function setStatus(el, text) {
+function setStatus(el, text, type = "") {
   el.textContent = text;
+  el.classList.remove("good", "bad");
+  if (type) el.classList.add(type);
 }
 
 function formatRemaining(ms) {
@@ -89,4 +140,12 @@ function formatRemaining(ms) {
   const min = Math.floor(total / 60);
   const sec = total % 60;
   return min > 0 ? `${min}m ${sec}s` : `${sec}s`;
+}
+
+function validVerificationCode(value) {
+  return /^\d{4,8}$/.test(value);
+}
+
+function validSharedPassword(value) {
+  return typeof value === "string" && value.length >= 10;
 }

@@ -17,7 +17,7 @@ body {
 }
 
 main {
-  width: min(92vw, 460px);
+  width: min(92vw, 480px);
   padding: 24px;
 }
 
@@ -28,9 +28,19 @@ main {
   padding: 22px;
 }
 
+h1,
+h2 {
+  margin-top: 0;
+}
+
 h1 {
-  margin: 0 0 8px;
+  margin-bottom: 8px;
   font-size: 24px;
+}
+
+h2 {
+  margin-bottom: 8px;
+  font-size: 18px;
 }
 
 p {
@@ -81,7 +91,7 @@ button.secondary {
 }
 
 button.danger {
-  background: #5e1d1d;
+  background: #651f1f;
   color: #fff;
 }
 
@@ -98,14 +108,35 @@ button:disabled {
   overflow-wrap: anywhere;
 }
 
-.code-box {
-  display: none;
+.good {
+  color: #bde5bd;
+}
+
+.bad {
+  color: #ffb5b5;
+}
+
+.code-box,
+.wait-box,
+.live-box {
   margin-top: 18px;
-  padding: 22px 12px;
+  padding: 20px 14px;
   text-align: center;
   border-radius: 12px;
   background: #101010;
   border: 1px solid #3c3c3c;
+}
+
+.wait-box {
+  display: none;
+}
+
+.code-box {
+  display: none;
+}
+
+.live-box {
+  text-align: left;
 }
 
 .code {
@@ -113,6 +144,16 @@ button:disabled {
   font-weight: 800;
   letter-spacing: .12em;
   font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.live-code {
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: .1em;
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  margin: 12px 0;
 }
 
 .small {
@@ -147,6 +188,40 @@ button:disabled {
   padding: 0 12px;
 }
 
+.row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.separator {
+  height: 1px;
+  background: #333;
+  border: 0;
+  margin: 24px 0;
+}
+
 .hidden {
   display: none !important;
+}
+
+.spinner {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: currentColor;
+  margin-right: 7px;
+  animation: pulse 1.1s infinite ease-in-out;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: .25; }
+  50% { opacity: 1; }
+}
+
+@media (max-width: 420px) {
+  .row {
+    grid-template-columns: 1fr;
+  }
 }

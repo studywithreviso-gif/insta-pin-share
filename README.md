@@ -1,334 +1,214 @@
-# Private verification-code relay
+# Insta PIN Share v2
 
-A small static website for sending a short verification code from one browser to another.
+Static GitHub Pages + Firebase Realtime Database code relay.
 
-- Frontend hosting: GitHub Pages
-- Temporary storage: Firebase Realtime Database
-- Encryption: AES-256-GCM in the browser
-- Password-derived key: PBKDF2-SHA-256, 250,000 iterations
-- Shared password is never sent to Firebase
-- Verification code expires after 5 minutes by default
-- No Instagram password or login credentials are stored
+## v2 flow
 
-## Files
+### Receiver
 
-- `setup.html` — generates a private random room link
-- `send.html` — sender enters the code + shared password
-- `index.html` — viewer enters the shared password and waits for the code
-- `firebase-config.js` — put your Firebase Realtime Database URL here
-- `database.rules.json` — security rules to paste into Firebase
-- `crypto.js` — browser-side encryption/decryption
-- `common.js` — Firebase REST helper functions
-- `styles.css` — minimal styling
+1. Open receiver link at any time.
+2. Enter the permanent shared password.
+3. The room password is checked immediately, even if no verification code exists.
+4. If correct, the page shows `Waiting for code...`.
+5. Leave the tab open.
+6. When the sender posts a code, it appears automatically.
+7. If the sender deletes the code, the receiver goes back to waiting.
 
----
+### Sender
 
-# Setup
+1. Enter the Instagram verification code.
+2. Enter the permanent shared password.
+3. Press `Check password & send code`.
+4. Wrong password => nothing is sent.
+5. Correct password => code is encrypted locally and uploaded.
+6. Sender can see which code is currently live.
+7. Sender has a `Delete live code` button.
 
-## 1. Create a GitHub repository
+## Permanent room vs temporary code
 
-Create a new repository, for example:
+- Room ID: permanent
+- Permanent password verifier: permanent
+- Verification code: 5 minutes by default
 
-`private-code-relay`
-
-Upload all files from this folder to the repository.
-
-Do **not** add any Instagram password, Gmail password, Firebase service-account JSON, private API key, or other secret to the repository.
-
-The Firebase Realtime Database URL and web API configuration are not server secrets. This project only needs the database URL.
+The password itself is never stored. `config` contains an AES-GCM encrypted known verifier.
+Both sender and receiver verify the password by decrypting that verifier.
 
 ---
 
-## 2. Create a Firebase project
-
-Go to Firebase Console and create a project.
-
-Then:
-
-1. Open **Build → Realtime Database**
-2. Click **Create Database**
-3. Choose a region
-4. Create the database
-5. Open the **Rules** tab
-6. Replace the rules with the contents of `database.rules.json`
-7. Publish the rules
-
-Important: do not use permanent test-mode rules such as:
-
-```json
-{
-  "rules": {
-    ".read": true,
-    ".write": true
-  }
-}
-```
-
-Use the supplied rules instead.
-
----
-
-## 3. Copy the database URL
-
-In Firebase Realtime Database, copy the database URL.
-
-It will look similar to one of these:
-
-```text
-https://PROJECT-ID-default-rtdb.asia-southeast1.firebasedatabase.app
-```
-
-or:
-
-```text
-https://PROJECT-ID-default-rtdb.firebaseio.com
-```
-
-Open `firebase-config.js` and replace:
-
-```js
-databaseURL: "PASTE_YOUR_FIREBASE_REALTIME_DATABASE_URL_HERE"
-```
-
-with the exact URL.
-
-Example:
-
-```js
-window.APP_CONFIG = {
-  databaseURL: "https://my-project-default-rtdb.asia-southeast1.firebasedatabase.app",
-  ttlMinutes: 5,
-  pollMs: 2000
-};
-```
-
-Do not add `/rooms` or `.json` to the URL. The app does that itself.
-
----
-
-## 4. Enable GitHub Pages
-
-In the GitHub repository:
-
-1. Open **Settings**
-2. Open **Pages**
-3. Under **Build and deployment**, choose **Deploy from a branch**
-4. Choose branch `main`
-5. Choose folder `/ (root)`
-6. Save
-
-After GitHub deploys it, your site will be something like:
-
-```text
-https://YOUR-USERNAME.github.io/private-code-relay/
-```
-
----
-
-# First use
+# IMPORTANT: update Firebase Rules first
 
 Open:
 
-```text
-https://YOUR-USERNAME.github.io/private-code-relay/setup.html
-```
+Firebase Console -> Realtime Database -> Rules
 
-Press **Generate new room**.
+Replace the current rules with the entire contents of:
 
-You will receive two links.
+`database.rules.json`
 
-### Viewer link
+Then click **Publish**.
 
-Example:
-
-```text
-https://YOUR-USERNAME.github.io/private-code-relay/index.html#room=LONG_RANDOM_VALUE
-```
-
-This is the link the viewer opens in Incognito.
-
-### Sender link
-
-Example:
-
-```text
-https://YOUR-USERNAME.github.io/private-code-relay/send.html#room=LONG_RANDOM_VALUE
-```
-
-Keep this link for yourself.
-
-The `room` value is stored after `#`, so GitHub Pages does not receive it as part of the HTTP request.
+The old v1 rules will not work with this v2 folder structure.
 
 ---
 
-# Choose a shared password
+# Deploy to GitHub Pages
 
-Choose a strong shared password, preferably 4+ random words or at least 14-16 characters.
+Replace the old repository files with the files from this folder and push/commit them.
 
-Example format:
+Your configured Firebase URL is already in:
+
+`firebase-config.js`
+
+Current URL:
+
+`https://insta-pin-share-default-rtdb.asia-southeast1.firebasedatabase.app`
+
+---
+
+# Initialize the permanent password
+
+After GitHub Pages finishes redeploying, open:
+
+`https://studywithreviso-gif.github.io/insta-pin-share/setup.html`
+
+You have two choices.
+
+## Keep your existing long links
+
+Your existing room ID was:
+
+`8WFaKVp2oItJniSi5MJh7kVKIZ1A8Xsa`
+
+Paste only that room ID into **Existing room ID**.
+
+Choose a permanent shared password (minimum 10 characters), confirm it, then click:
+
+`Create / initialize room`
+
+This will create the permanent encrypted verifier under:
+
+`rooms/<room-id>/config`
+
+Your existing sender/receiver URL format can continue to use the same room ID.
+
+## Create a fresh room
+
+Leave the Existing room ID field empty.
+
+Choose the permanent shared password and click `Create / initialize room`.
+
+The page generates a fresh random room ID and gives you sender + receiver links.
+
+---
+
+# Recommended final setup
+
+Because the earlier room ID has been shared during setup/testing, use it for testing if you want.
+
+When everything works, create one new private room for long-term use and keep that room ID private.
+
+---
+
+# Firebase data structure
+
+The new structure is:
 
 ```text
-river-lamp-mango-planet-47
+rooms/
+  ROOM_ID/
+    config/
+      version
+      verifierCiphertext
+      verifierIv
+      verifierSalt
+      createdAt
+
+    message/
+      version
+      ciphertext
+      iv
+      salt
+      createdAt
+      expiresAt
 ```
 
-Do not use:
+`config` stays permanently.
+
+`message` is replaced whenever a new code is sent.
+
+---
+
+# Password security
+
+Use a password with at least 10 characters.
+
+Better:
+
+`mango-river-lamp-47`
+
+Avoid using:
 
 - Instagram password
 - Gmail password
 - phone PIN
 - birthday
-- a short common password
+- simple numeric PIN like 1234
 
-Both sender and viewer type this same password.
-
-The password is used locally to derive the AES encryption key and is not uploaded.
+This is a fully static Option A design, so the encrypted verifier can be obtained by anyone who somehow learns the secret room ID. A weak password could then be guessed offline.
 
 ---
 
-# Normal workflow
+# Testing
 
-## Viewer
+Use a fake code first:
 
-1. Open the viewer URL in Incognito.
-2. Enter the shared password.
-3. Press **Unlock & wait for code**.
-4. Leave that tab open.
+`123456`
 
-The page checks Firebase every 2 seconds.
+Receiver:
 
-## Sender
+1. Open receiver link.
+2. Enter permanent shared password.
+3. Confirm it immediately says `Waiting for code...`.
 
-1. Open the sender URL.
-2. Enter the new verification code.
-3. Enter the same shared password.
-4. Press **Encrypt & send**.
+Sender:
 
-The browser:
+1. Enter `123456`.
+2. Enter the same shared password.
+3. Send.
 
-1. derives an encryption key from the password,
-2. encrypts the verification code using AES-GCM,
-3. uploads only ciphertext + salt + IV + timestamps to Firebase.
+Expected:
 
-The viewer downloads the encrypted payload and decrypts it locally.
-
----
-
-# Delete a code
-
-On the sender page press:
-
-**Delete current code**
-
-This removes the current payload from Firebase.
-
-The supplied Firebase rules also prevent clients from reading a code after its expiry timestamp.
-
-Expired data may physically remain in Realtime Database until overwritten or deleted, but it is encrypted and the rules refuse reads after expiry.
+- sender says code sent
+- sender Current live code shows `123456`
+- receiver automatically changes from waiting to `123456`
+- countdown appears
+- press Delete live code on sender
+- receiver goes back to Waiting for code
 
 ---
 
-# Security model
+# Security limitations
 
-This is designed for convenience, not as a replacement for Instagram security.
+This design encrypts codes and never uploads the permanent shared password.
 
-### Protected
+However, because it uses only GitHub Pages + Firebase and no authentication backend, Firebase rules cannot cryptographically verify the shared password for writes.
 
-If Firebase data is viewed directly, the verification code is encrypted.
+Someone who somehow learns the secret room ID may be able to overwrite or delete the temporary encrypted message.
 
-The shared password is never uploaded.
+They still cannot decrypt the real code without the permanent password.
 
-The room ID is long and randomly generated.
-
-### Important limitation
-
-Because GitHub Pages is static and this version intentionally does not require a backend login, anyone who somehow obtains the exact random room ID could overwrite the encrypted payload.
-
-They still cannot decrypt a real code without the shared password, but they could cause nuisance by replacing/deleting data.
-
-For a two-person private relay, a strong random room link plus encryption is a reasonable simple setup. If you need stronger authorization against writes, use a backend/Cloudflare Worker or Firebase Authentication.
+If stronger write authorization/rate limiting is needed later, move the password check to a backend such as Cloudflare Workers.
 
 ---
 
-# Testing before using a real code
-
-Test with a fake code first.
-
-1. Viewer opens their link.
-2. Viewer enters the shared password.
-3. Sender opens the sender link.
-4. Sender enters:
-
-```text
-123456
-```
-
-5. Sender enters the same password.
-6. Press **Encrypt & send**.
-7. Within about 2 seconds the viewer should see `123456`.
-
-Then press **Delete current code**.
-
----
-
-# Troubleshooting
-
-## "Firebase is not configured"
-
-You did not update `firebase-config.js`, or GitHub Pages is serving an older version.
-
-Check that `databaseURL` contains your exact Firebase Realtime Database URL.
-
-## "Firebase write failed (401/403)"
-
-Usually the database rules were not published or the URL points to a different Firebase project.
-
-Paste `database.rules.json` into Realtime Database → Rules and publish it.
-
-## Viewer always says "Waiting for a code"
-
-Possible reasons:
-
-- sender has not sent a code yet
-- code expired
-- sender and viewer links use different room IDs
-- database URL is wrong
-
-## "Wrong shared password"
-
-The viewer password does not match the password used to encrypt that code.
-
-Enter the password again and wait for the next code.
-
-## GitHub Pages gives 404
-
-Make sure Pages is enabled for the repository and the files are in the branch/folder selected for Pages.
-
----
-
-# Recommended settings
-
-Keep:
-
-```js
-ttlMinutes: 5
-pollMs: 2000
-```
-
-Do not increase `ttlMinutes` above 10 unless you also intentionally change the Firebase rules.
-
-For verification codes, shorter expiry is better.
-
----
-
-# What this project does NOT do
+# What this does not do
 
 It does not:
 
+- disable Instagram verification
 - log into Instagram
-- read Gmail
-- automatically intercept emails
+- automatically read Gmail
 - store Instagram passwords
-- bypass Instagram's verification system
-- disable Instagram's security checks
+- store Gmail passwords
 
-It only relays a code that the sender manually enters.
+It only relays a manually entered verification code.
