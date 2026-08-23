@@ -155,7 +155,7 @@
       const password = passwordInput.value;
 
       if (!validSharedPassword(password)) {
-        setStatus(statusEl, "Enter the shared PIN/password.", "bad");
+        setStatus(statusEl, "Shared PIN/password must be at least 4 characters.", "bad");
         return;
       }
 

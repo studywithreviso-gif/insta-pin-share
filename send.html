@@ -187,7 +187,7 @@
       }
 
       if (!validSharedPassword(password)) {
-        setStatus(statusEl, "Enter the shared PIN/password.", "bad");
+        setStatus(statusEl, "Shared PIN/password must be at least 4 characters.", "bad");
         return;
       }
 
@@ -240,7 +240,7 @@
       const password = passwordInput.value;
 
       if (!validSharedPassword(password)) {
-        setStatus(statusEl, "Enter the shared password first.", "bad");
+        setStatus(statusEl, "Enter the shared PIN/password (minimum 4 characters) first.", "bad");
         return;
       }
 
@@ -275,7 +275,7 @@
       if (!validSharedPassword(password)) {
         setStatus(
           statusEl,
-          "Enter the shared password first, then press Delete live code.",
+          "Enter the shared PIN/password (minimum 4 characters) first, then press Delete live code.",
           "bad"
         );
         return;

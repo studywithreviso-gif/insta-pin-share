@@ -81,7 +81,7 @@ Your existing room ID was:
 
 Paste only that room ID into **Existing room ID**.
 
-Choose a permanent shared PIN/password, confirm it, then click:
+Choose a permanent shared PIN/password (minimum 4 characters), confirm it, then click:
 
 `Create / initialize room`
 
@@ -140,7 +140,7 @@ rooms/
 
 # Password security
 
-There is no minimum length enforced by the website.
+The website enforces a minimum shared PIN/password length of 4 characters.
 
 For security, a longer PIN/password is still stronger than a short numeric PIN.
 
