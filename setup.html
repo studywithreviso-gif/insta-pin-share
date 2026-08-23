@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Create Private Room</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main>
+    <section class="card">
+      <h1>Create a room</h1>
+      <p>
+        Generate a long random room ID. Share only the viewer link with the other person.
+        Keep the sender link for yourself.
+      </p>
+
+      <button id="generate">Generate new room</button>
+
+      <div id="links" class="links hidden">
+        <div class="link-row">
+          <strong>Viewer link</strong>
+          <div id="viewerLink" class="link-value"></div>
+          <button id="copyViewer" class="inline-button secondary">Copy viewer link</button>
+        </div>
+
+        <div class="link-row">
+          <strong>Sender link</strong>
+          <div id="senderLink" class="link-value"></div>
+          <button id="copySender" class="inline-button secondary">Copy sender link</button>
+        </div>
+
+        <p class="small">
+          Choose a separate strong shared password and tell it to the viewer through a trusted channel.
+          Do not put that password in the URL.
+        </p>
+      </div>
+
+      <div id="status" class="status"></div>
+    </section>
+  </main>
+
+  <script>
+    const generateButton = document.getElementById("generate");
+    const links = document.getElementById("links");
+    const viewerLinkEl = document.getElementById("viewerLink");
+    const senderLinkEl = document.getElementById("senderLink");
+    const copyViewerButton = document.getElementById("copyViewer");
+    const copySenderButton = document.getElementById("copySender");
+    const statusEl = document.getElementById("status");
+
+    let viewerUrl = "";
+    let senderUrl = "";
+
+    function base64Url(bytes) {
+      let binary = "";
+      for (const b of bytes) binary += String.fromCharCode(b);
+      return btoa(binary)
+        .replace(/\+/g, "-")
+        .replace(/\//g, "_")
+        .replace(/=+$/g, "");
+    }
+
+    function makeRoomId() {
+      return base64Url(crypto.getRandomValues(new Uint8Array(24)));
+    }
+
+    function projectBaseUrl() {
+      const url = new URL(location.href);
+      const directory = url.pathname.replace(/setup\.html$/, "");
+      return `${url.origin}${directory}`;
+    }
+
+    function generate() {
+      const room = makeRoomId();
+      const base = projectBaseUrl();
+
+      viewerUrl = `${base}index.html#room=${room}`;
+      senderUrl = `${base}send.html#room=${room}`;
+
+      viewerLinkEl.textContent = viewerUrl;
+      senderLinkEl.textContent = senderUrl;
+      links.classList.remove("hidden");
+      statusEl.textContent = "Room generated.";
+    }
+
+    async function copy(value, label) {
+      try {
+        await navigator.clipboard.writeText(value);
+        statusEl.textContent = `${label} copied.`;
+      } catch {
+        statusEl.textContent = "Copy failed. Select and copy the link manually.";
+      }
+    }
+
+    generateButton.addEventListener("click", generate);
+    copyViewerButton.addEventListener("click", () => copy(viewerUrl, "Viewer link"));
+    copySenderButton.addEventListener("click", () => copy(senderUrl, "Sender link"));
+  </script>
+</body>
+</html>

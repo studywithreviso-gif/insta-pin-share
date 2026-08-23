@@ -1,0 +1,160 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Send Code</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main>
+    <section class="card">
+      <h1>Send verification code</h1>
+      <p>Enter the code and the same shared password used by the viewer.</p>
+
+      <div id="missingRoom" class="hidden">
+        <p>No room was found in this link.</p>
+        <a href="setup.html">Create a room</a>
+      </div>
+
+      <div id="sender">
+        <label for="code">Verification code</label>
+        <input
+          id="code"
+          type="text"
+          inputmode="numeric"
+          autocomplete="one-time-code"
+          maxlength="8"
+          placeholder="123456"
+        >
+
+        <label for="password">Shared password</label>
+        <input
+          id="password"
+          type="password"
+          autocomplete="off"
+          autocapitalize="none"
+          spellcheck="false"
+          placeholder="Shared password"
+        >
+
+        <button id="send">Encrypt & send</button>
+        <button id="clear" class="danger">Delete current code</button>
+
+        <div id="status" class="status"></div>
+        <div class="small">
+          The browser encrypts the code before sending it to Firebase.
+          The shared password is not uploaded.
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="firebase-config.js"></script>
+  <script src="crypto.js"></script>
+  <script src="common.js"></script>
+  <script>
+    const roomId = getRoomId();
+    const sender = document.getElementById("sender");
+    const missingRoom = document.getElementById("missingRoom");
+    const codeInput = document.getElementById("code");
+    const passwordInput = document.getElementById("password");
+    const sendButton = document.getElementById("send");
+    const clearButton = document.getElementById("clear");
+    const statusEl = document.getElementById("status");
+
+    let cfg;
+
+    if (!roomId) {
+      sender.classList.add("hidden");
+      missingRoom.classList.remove("hidden");
+    }
+
+    try {
+      cfg = getConfig();
+    } catch (err) {
+      setStatus(statusEl, err.message);
+      sendButton.disabled = true;
+      clearButton.disabled = true;
+    }
+
+    codeInput.addEventListener("input", () => {
+      codeInput.value = codeInput.value.replace(/\D/g, "").slice(0, 8);
+    });
+
+    sendButton.addEventListener("click", async () => {
+      if (!cfg || !roomId) return;
+
+      const code = codeInput.value.trim();
+      const password = passwordInput.value;
+
+      if (!/^\d{4,8}$/.test(code)) {
+        setStatus(statusEl, "Enter a valid 4-8 digit verification code.");
+        return;
+      }
+
+      if (password.length < 8) {
+        setStatus(statusEl, "Use a shared password with at least 8 characters.");
+        return;
+      }
+
+      sendButton.disabled = true;
+      setStatus(statusEl, "Encrypting...");
+
+      try {
+        const encrypted = await encryptText(code, password);
+        const now = Date.now();
+
+        const payload = {
+          version: 1,
+          ciphertext: encrypted.ciphertext,
+          iv: encrypted.iv,
+          salt: encrypted.salt,
+          createdAt: now,
+          expiresAt: now + cfg.ttlMinutes * 60 * 1000
+        };
+
+        await firebasePut(cfg.databaseURL, roomId, payload);
+
+        codeInput.value = "";
+        // Password is intentionally cleared so it is not kept in the DOM.
+        passwordInput.value = "";
+
+        setStatus(
+          statusEl,
+          `Code sent. It expires in about ${cfg.ttlMinutes} minute${cfg.ttlMinutes === 1 ? "" : "s"}.`
+        );
+      } catch (err) {
+        setStatus(statusEl, err.message || "Could not send the code.");
+      } finally {
+        sendButton.disabled = false;
+      }
+    });
+
+    clearButton.addEventListener("click", async () => {
+      if (!cfg || !roomId) return;
+
+      clearButton.disabled = true;
+      setStatus(statusEl, "Deleting...");
+
+      try {
+        await firebaseDelete(cfg.databaseURL, roomId);
+        setStatus(statusEl, "Current code deleted.");
+      } catch (err) {
+        setStatus(statusEl, err.message || "Could not delete the code.");
+      } finally {
+        clearButton.disabled = false;
+      }
+    });
+
+    codeInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") passwordInput.focus();
+    });
+
+    passwordInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") sendButton.click();
+    });
+  </script>
+</body>
+</html>
